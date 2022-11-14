@@ -5,10 +5,17 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
+import firefliesFragmentShader from '../src/shaders/fireflies/fragment.glsl';
+import firefliesVertexShader from '../src/shaders/fireflies/vertex.glsl';
+
+import portalFragmentShader from '../src/shaders/portal/fragment.glsl';
+import portalVertexShader from '../src/shaders/portal/vertex.glsl';
+
 /**
  * Base
  */
 // Debug
+const debugObject = {};
 const gui = new dat.GUI({
   width: 400,
 });
@@ -48,8 +55,28 @@ const poleLightMaterial = new THREE.MeshBasicMaterial({
   color: 0xffffe5,
 });
 
+debugObject.portalColorStart = '#0x000000';
+debugObject.portalColorEnd = '#0x428a89';
+
+gui.addColor(debugObject, 'portalColorStart').onChange(() => {
+  portalLightMaterial.uniforms.uColorStart.value.set(
+    debugObject.portalColorStart
+  );
+});
+gui.addColor(debugObject, 'portalColorEnd').onChange(() => {
+  portalLightMaterial.uniforms.uColorEnd.value.set(debugObject.portalColorEnd);
+});
+
 //Portal Light Material
-const portalLightMaterial = new THREE.MeshBasicMaterial({ color: 'lightblue' });
+const portalLightMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uColorStart: { value: new THREE.Color(0x000000) },
+    uColorEnd: { value: new THREE.Color(0x428a89) },
+  },
+  fragmentShader: portalFragmentShader,
+  vertexShader: portalVertexShader,
+});
 
 //Blender Scene
 gltfLoader.load('mergedPortal.glb', (gltf) => {
@@ -72,6 +99,53 @@ gltfLoader.load('mergedPortal.glb', (gltf) => {
   scene.add(gltf.scene);
 });
 
+//Fireflies
+//Geometry
+const firefliesGeometry = new THREE.BufferGeometry();
+const firesfliesCount = 30;
+const positionArray = new Float32Array(firesfliesCount * 3);
+const scaleArray = new Float32Array(firesfliesCount);
+
+for (let i = 0; i < firesfliesCount; i++) {
+  const i3 = i * 3;
+  positionArray[i3 + 0] = (Math.random() - 0.5) * 4;
+  positionArray[i3 + 1] = Math.random() * 2;
+  positionArray[i3 + 2] = (Math.random() - 0.5) * 4;
+
+  scaleArray[i] = Math.random();
+}
+
+firefliesGeometry.setAttribute(
+  'position',
+  new THREE.BufferAttribute(positionArray, 3)
+);
+firefliesGeometry.setAttribute(
+  'aScale',
+  new THREE.BufferAttribute(scaleArray, 1)
+);
+
+//Material
+const firefliesMaterial = new THREE.ShaderMaterial({
+  depthWrite: false,
+  transparent: true,
+  uniforms: {
+    uTime: { value: 0 },
+    uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+    uSize: { value: 100 },
+  },
+  vertexShader: firefliesVertexShader,
+  fragmentShader: firefliesFragmentShader,
+  blending: THREE.AdditiveBlending,
+});
+
+gui
+  .add(firefliesMaterial.uniforms.uSize, 'value', 0, 500, 1)
+  .name('fireflies Size');
+
+//Points/Mesh
+const fireflies = new THREE.Points(firefliesGeometry, firefliesMaterial);
+scene.add(fireflies);
+
 /**
  * Sizes
  */
@@ -92,6 +166,12 @@ window.addEventListener('resize', () => {
   // Update renderer
   renderer.setSize(sizes.width, sizes.height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  //Update firefliesShader PixelRatio
+  firefliesMaterial.uniforms.uPixelRatio.value = Math.min(
+    window.devicePixelRatio,
+    2
+  );
 });
 
 /**
@@ -123,6 +203,11 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputEncoding = THREE.sRGBEncoding;
+debugObject.clearColor = '#0f1e24';
+renderer.setClearColor(debugObject.clearColor);
+gui.addColor(debugObject, 'clearColor').onChange(() => {
+  renderer.setClearColor(debugObject.clearColor);
+});
 
 /**
  * Animate
@@ -131,6 +216,14 @@ const clock = new THREE.Clock();
 
 const tick = () => {
   const elapsedTime = clock.getElapsedTime();
+
+  firefliesMaterial.uniforms.uTime.value = elapsedTime;
+  portalLightMaterial.uniforms.uTime.value = elapsedTime;
+
+  //Update Camera block
+  if (camera.position.y <= 0.7) {
+    camera.position.y = 0.7;
+  }
 
   // Update controls
   controls.update();
